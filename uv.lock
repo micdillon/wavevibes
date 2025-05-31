@@ -41,12 +41,22 @@ wheels = [
 ]
 
 [[package]]
+name = "wave"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/33/5a06e0c47a147b2683876ba7c576fad13e92b0b16755eb431e56c341e0cf/Wave-0.0.2.tar.gz", hash = "sha256:5a895bb85e04e38c82dba90d66a5ae8f488b50c58f3fc4df868a5bcdcabb8632", size = 27334, upload-time = "2011-01-09T22:48:14.878Z" }
+
+[[package]]
 name = "wavevibes"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "numpy" },
+    { name = "wave" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=2.2.6" }]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.2.6" },
+    { name = "wave", specifier = ">=0.0.2" },
+]
