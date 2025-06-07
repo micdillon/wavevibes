@@ -40,7 +40,7 @@ def main():
     )
     
     # Synthesize 3 seconds of audio
-    processor.process_file(
+    processor.process(
         input_file=None,  # No input file - synthesis mode
         output_file="synthesized_sine.wav",
         duration=3.0,
@@ -93,7 +93,7 @@ def main():
         amplitude=0.25,
     )
     
-    processor_stereo.process_file(
+    processor_stereo.process(
         input_file=None,
         output_file="synthesized_stereo_harmony.wav",
         duration=2.0,

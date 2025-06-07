@@ -94,7 +94,7 @@ algorithm = MyEffect(44100, 512, 2, my_param=0.5)
 processor = AudioProcessor(algorithm=algorithm, block_size=512)
 
 # Process file
-processor.process_file("input.wav", "output.wav")
+processor.process("input.wav", "output.wav")
 ```
 
 ## Built-in Algorithms

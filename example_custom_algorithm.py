@@ -94,7 +94,7 @@ if __name__ == "__main__":
     
     # Process the file
     print(f"Applying delay effect to {input_file}...")
-    processor.process_file(input_file, output_file)
+    processor.process(input_file, output_file)
     print(f"Output written to {output_file}")
     
     # Method 2: Using pre-initialized algorithm (if you know the file parameters)
@@ -107,4 +107,4 @@ if __name__ == "__main__":
     #     mix=0.3
     # )
     # processor = AudioProcessor(algorithm=delay, block_size=512)
-    # processor.process_file(input_file, output_file)
+    # processor.process(input_file, output_file)

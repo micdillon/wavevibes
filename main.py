@@ -32,7 +32,7 @@ def main():
     def progress(p):
         print(f"\rProgress: {p*100:.1f}%", end="", flush=True)
     
-    processor.process_file(args.input, args.output, progress_callback=progress)
+    processor.process(args.input, args.output, progress_callback=progress)
     print("\nDone!")
 
 

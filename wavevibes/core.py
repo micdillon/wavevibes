@@ -37,7 +37,7 @@ class AudioProcessor:
         self.block_size = block_size
         self.algorithm_params = algorithm_params
 
-    def process_file(
+    def process(
         self,
         input_file: Optional[str],
         output_file: str,
