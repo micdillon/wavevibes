@@ -39,27 +39,46 @@ class AudioProcessor:
 
     def process_file(
         self,
-        input_file: str,
+        input_file: Optional[str],
         output_file: str,
         overlap: float = 0.0,
         progress_callback: Optional[callable] = None,
+        duration: Optional[float] = None,
+        sample_rate: int = 44100,
+        channels: int = 1,
+        bit_depth: int = 16,
     ):
-        """Process an audio file block by block.
+        """Process an audio file block by block or synthesize audio.
 
         Args:
-            input_file: Path to input WAV file
+            input_file: Path to input WAV file (None for synthesis mode)
             output_file: Path to output WAV file
             overlap: Overlap factor (0.0 to 0.9) for overlapping blocks
             progress_callback: Optional callback function(progress: float) for progress updates
+            duration: Duration in seconds for synthesis mode (required if input_file is None)
+            sample_rate: Sample rate for synthesis mode (default 44100)
+            channels: Number of channels for synthesis mode (default 1)
+            bit_depth: Bit depth for synthesis mode (default 16)
         """
-        # Read input file
-        audio_data, sample_rate, bit_depth = read_wave(input_file)
+        # Synthesis mode or file mode
+        if input_file is None:
+            # Synthesis mode
+            if duration is None:
+                raise ValueError("Duration must be specified for synthesis mode")
+            
+            n_samples = int(duration * sample_rate)
+            n_channels = channels
+            # Create silent input buffer (algorithms will generate from zero input)
+            audio_data = np.zeros((n_samples, n_channels), dtype=np.float32)
+        else:
+            # File mode
+            audio_data, sample_rate, bit_depth = read_wave(input_file)
 
-        # Ensure 2D array
-        if audio_data.ndim == 1:
-            audio_data = audio_data.reshape(-1, 1)
+            # Ensure 2D array
+            if audio_data.ndim == 1:
+                audio_data = audio_data.reshape(-1, 1)
 
-        n_samples, n_channels = audio_data.shape
+            n_samples, n_channels = audio_data.shape
 
         # Create algorithm if using factory
         if self.algorithm_factory:
