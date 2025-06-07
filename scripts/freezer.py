@@ -77,20 +77,32 @@ class Freezer(Algorithm):
 
         return data[start_idx:end_idx].copy()
 
+    def _hermite_interpolate(self, y0, y1, y2, y3, frac):
+        """Hermite interpolation between y1 and y2, using y0 and y3 for slopes."""
+        c0 = y1
+        c1 = 0.5 * (y2 - y0)
+        c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3
+        c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2)
+        return ((c3 * frac + c2) * frac + c1) * frac + c0
+
     def process(self, block):
         n_samples = block.shape[0]
         output = np.zeros_like(block)
 
         # Generate output using wavetable oscillator
         for i in range(n_samples):
-            # Linear interpolation for smoother playback
+            # Hermite interpolation for smoother playback
             idx = int(self.phase)
             frac = self.phase - idx
 
             if idx < self.wavetable_size - 1:
-                sample = (
-                    self.wavetable[idx] * (1 - frac) + self.wavetable[idx + 1] * frac
-                )
+                # Get four points for Hermite interpolation
+                y0 = self.wavetable[idx - 1] if idx > 0 else self.wavetable[-1]
+                y1 = self.wavetable[idx]
+                y2 = self.wavetable[idx + 1]
+                y3 = self.wavetable[idx + 2] if idx < self.wavetable_size - 2 else self.wavetable[0]
+                
+                sample = self._hermite_interpolate(y0, y1, y2, y3, frac)
             else:
                 sample = self.wavetable[idx]
 
