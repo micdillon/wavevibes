@@ -95,7 +95,14 @@ class Freezer(Algorithm):
         start_idx = crossings[0]
         end_idx = crossings[-1]
 
-        return data[start_idx:end_idx].copy()
+        wave_table = data[start_idx:end_idx].copy()
+
+        # Normalize wavetable to prevent amplitude variations
+        max_val = np.max(np.abs(wave_table)) * 0.9
+        if max_val > 0:
+            wave_table = wave_table / max_val
+
+        return wave_table
 
     def _get_or_extract_wavetable(self, location):
         """Get wavetable from cache or extract if not present."""
@@ -222,10 +229,10 @@ def main():
         channels,
         audio_data,
         start_loc=0.2,
-        end_loc=0.8,
+        end_loc=0.3,
         n_crossings=16,
         interp_time=1.0,  # 0.5 second crossfade between wavetables
-        min_distance=0.01,  # New wavetable every 5% of file
+        min_distance=0.001,  # New wavetable every 5% of file
     )
     processor_stereo = AudioProcessor(
         algorithm=freezer,
