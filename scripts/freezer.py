@@ -179,15 +179,28 @@ class Freezer(Algorithm):
 
         return stereo_wavetable
 
-    def _get_or_extract_wavetable(self, location):
+    def _get_or_extract_wavetable(self, location, n_crossings=None):
         """Get wavetable from cache or extract if not present."""
+        # Use current n_crossings if not specified
+        if n_crossings is None:
+            n_crossings = self.n_crossings
+
         # Round location to avoid floating point precision issues
-        cache_key = round(location, 6)
+        # Include n_crossings in cache key
+        cache_key = (round(location, 6), n_crossings)
 
         if cache_key not in self.wavetable_cache:
+            # Temporarily set n_crossings for extraction
+            old_n_crossings = self.n_crossings
+            self.n_crossings = n_crossings
+
             self.wavetable_cache[cache_key] = self._extract_wavetable(location)
+
+            # Restore original n_crossings
+            self.n_crossings = old_n_crossings
+
             print(
-                f"Extracted new wavetable at location {location:.3f}, size: {len(self.wavetable_cache[cache_key])}"
+                f"Extracted new wavetable at location {location:.3f}, n_crossings: {n_crossings}, size: {len(self.wavetable_cache[cache_key])}"
             )
 
         return self.wavetable_cache[cache_key]
@@ -384,7 +397,7 @@ def main():
         end_loc=0.3,
         n_crossings=16,
         interp_time=1.0,  # 0.5 second crossfade between wavetables
-        min_distance=0.001,  # New wavetable every 5% of file
+        min_distance=0.001,  # New wavetable every 0.1% of file
     )
     processor_stereo = AudioProcessor(
         algorithm=freezer,
