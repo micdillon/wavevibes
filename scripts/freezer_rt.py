@@ -31,6 +31,27 @@ class FreezerRT(Freezer):
         self.transition_counter = 0
         self.is_transitioning = True
 
+    def jump_to_location(self, location: float, transition_time: float):
+        """Jump directly to a new location and crossfade to its wavetable."""
+        # Update location immediately
+        self.current_loc = location
+        self.start_loc = location
+        self.end_loc = location
+
+        if transition_time > 0:
+            # Set up crossfade to new wavetable
+            self.next_wavetable = self._get_or_extract_wavetable(location)
+            self.is_interpolating = True
+            self.interp_counter = 0
+            self.interp_samples = int(transition_time * self.sample_rate)
+            self.next_phase = 0.0
+        else:
+            # Instant switch if transition time is 0
+            self.is_interpolating = False
+            self.next_wavetable = None
+            self.current_wavetable = self._get_or_extract_wavetable(location)
+            self.current_phase = 0.0
+
     def process(self, block):
         """Process with dynamic parameter updates."""
         # Handle smooth transitions
@@ -150,13 +171,14 @@ class REPLInterface:
     def print_help(self):
         """Print help message."""
         print("\n=== Freezer RT Commands ===")
-        print("<location> <duration>     - Move from current to location")
+        print("<location> <duration>     - Jump to location and crossfade")
         print("<start> <end> <duration>  - Set new locations with transition")
         print("status                    - Show current parameters")
         print("help                      - Show this help")
         print("quit                      - Exit application")
         print("\nExamples:")
-        print("  0.5 2.0       (move from current position to 0.5 over 2 seconds)")
+        print("  0.5 2.0       (jump to 0.5 with 2s crossfade)")
+        print("  0.5 0         (jump to 0.5 instantly)")
         print("  0.2 0.8 3.0   (move from 0.2 to 0.8 over 3 seconds)\n")
 
     def print_status(self):
@@ -198,16 +220,18 @@ class REPLInterface:
                 elif action == "move":
                     _, location, duration = result
                     # Validate parameters
-                    if 0 <= location <= 1 and duration > 0:
-                        # Use current location as start
-                        current = self.freezer.current_loc
-                        self.freezer.update_target(current, location, duration)
-                        print(
-                            f"Moving from {current:.3f} to {location:.3f} over {duration:.1f}s"
-                        )
+                    if 0 <= location <= 1 and duration >= 0:
+                        # Jump directly to the new location
+                        self.freezer.jump_to_location(location, duration)
+                        if duration > 0:
+                            print(
+                                f"Jumped to {location:.3f} with {duration:.1f}s crossfade"
+                            )
+                        else:
+                            print(f"Jumped to {location:.3f} instantly")
                     else:
                         print(
-                            "Error: Location must be between 0 and 1, duration must be positive"
+                            "Error: Location must be between 0 and 1, duration must be non-negative"
                         )
                 elif action == "set":
                     _, start, end, duration = result
@@ -237,7 +261,7 @@ def main():
         "--start-loc", type=float, default=0.2, help="Initial start location (0-1)"
     )
     parser.add_argument(
-        "--end-loc", type=float, default=0.3, help="Initial end location (0-1)"
+        "--end-loc", type=float, default=0.2, help="Initial end location (0-1)"
     )
     parser.add_argument("--block-size", type=int, default=512, help="Audio block size")
     parser.add_argument(
@@ -264,7 +288,7 @@ def main():
         audio_data,
         start_loc=args.start_loc,
         end_loc=args.end_loc,
-        n_crossings=4,
+        n_crossings=16,
         interp_time=0.5,
         min_distance=0.01,
     )
