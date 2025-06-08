@@ -122,8 +122,17 @@ class REPLInterface:
             return ('help',)
         elif command == 'status':
             return ('status',)
+        elif len(parts) == 2:
+            # Two parameters: "location duration" format (move from current to location)
+            try:
+                location = float(parts[0])
+                duration = float(parts[1])
+                # Use current location as start
+                return ('move', location, duration)
+            except ValueError:
+                return ('error', 'Invalid format. Use: <location> <duration>')
         elif len(parts) == 3:
-            # Assume it's "start end duration" format
+            # Three parameters: "start end duration" format
             try:
                 start = float(parts[0])
                 end = float(parts[1])
@@ -137,12 +146,14 @@ class REPLInterface:
     def print_help(self):
         """Print help message."""
         print("\n=== Freezer RT Commands ===")
+        print("<location> <duration>     - Move from current to location")
         print("<start> <end> <duration>  - Set new locations with transition")
         print("status                    - Show current parameters")
         print("help                      - Show this help")
         print("quit                      - Exit application")
-        print("\nExample: 0.2 0.8 2.0")
-        print("(moves from position 0.2 to 0.8 over 2 seconds)\n")
+        print("\nExamples:")
+        print("  0.5 2.0       (move from current position to 0.5 over 2 seconds)")
+        print("  0.2 0.8 3.0   (move from 0.2 to 0.8 over 3 seconds)\n")
         
     def print_status(self):
         """Print current status."""
@@ -180,6 +191,16 @@ class REPLInterface:
                     self.print_help()
                 elif action == 'status':
                     self.print_status()
+                elif action == 'move':
+                    _, location, duration = result
+                    # Validate parameters
+                    if 0 <= location <= 1 and duration > 0:
+                        # Use current location as start
+                        current = self.freezer.current_loc
+                        self.freezer.update_target(current, location, duration)
+                        print(f"Moving from {current:.3f} to {location:.3f} over {duration:.1f}s")
+                    else:
+                        print("Error: Location must be between 0 and 1, duration must be positive")
                 elif action == 'set':
                     _, start, end, duration = result
                     # Validate parameters
