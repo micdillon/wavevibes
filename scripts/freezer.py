@@ -21,6 +21,7 @@ class Freezer(Algorithm):
         n_crossings: int = 2,
         interp_time: float = 1.0,
         min_distance: float = 0.01,
+        normalize: bool = True,
     ):
         super().__init__(sample_rate, block_size, channels)
         self.wav_data = audio_data
@@ -30,6 +31,7 @@ class Freezer(Algorithm):
         self.n_crossings = n_crossings
         self.interp_time = interp_time
         self.min_distance = min_distance
+        self.normalize = normalize
 
         # Wavetable cache: {location: wavetable_data}
         self.wavetable_cache = {}
@@ -97,10 +99,11 @@ class Freezer(Algorithm):
 
         wave_table = data[start_idx:end_idx].copy()
 
-        # Normalize wavetable to prevent amplitude variations
-        max_val = np.max(np.abs(wave_table)) * 0.9
-        if max_val > 0:
-            wave_table = wave_table / max_val
+        if self.normalize:
+            # Normalize wavetable to prevent amplitude variations
+            max_val = np.max(np.abs(wave_table)) * 0.9
+            if max_val > 0:
+                wave_table = wave_table / max_val
 
         return wave_table
 
