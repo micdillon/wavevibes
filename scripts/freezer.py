@@ -72,12 +72,46 @@ class Freezer(Algorithm):
             prev_sample = curr_sample
 
         return crossings
+    
+    def _find_synchronized_crossings(self, data, start_idx, max_search=10000, sync_window=5):
+        """Find zero crossings that occur close together in both channels."""
+        if data.ndim == 1:
+            # Mono - just return regular crossings
+            return self._find_zero_crossings(data, start_idx, max_search), None
+        
+        # Find crossings in both channels
+        left_crossings = self._find_zero_crossings(data[:, 0], start_idx, max_search)
+        right_crossings = self._find_zero_crossings(data[:, 1], start_idx, max_search)
+        
+        # Find synchronized crossings (within sync_window samples of each other)
+        sync_left = []
+        sync_right = []
+        
+        for lc in left_crossings:
+            # Find closest right crossing
+            if right_crossings:
+                distances = [abs(lc - rc) for rc in right_crossings]
+                min_dist_idx = np.argmin(distances)
+                
+                if distances[min_dist_idx] <= sync_window:
+                    sync_left.append(lc)
+                    sync_right.append(right_crossings[min_dist_idx])
+                    
+                    if len(sync_left) >= self.n_crossings:
+                        break
+        
+        # If not enough synchronized crossings, fall back to independent crossings
+        if len(sync_left) < 2:
+            return left_crossings[:self.n_crossings], right_crossings[:self.n_crossings]
+        
+        return sync_left, sync_right
 
     def _extract_wavetable(self, location):
-        """Extract a wavetable from the audio data based on zero crossings at specific location."""
-        # Use first channel if stereo
-        if self.wav_data.ndim > 1:
-            data = self.wav_data[:, 0]
+        """Extract a stereo wavetable from the audio data based on synchronized zero crossings."""
+        # Ensure we have stereo data to work with
+        if self.wav_data.ndim == 1:
+            # Duplicate mono to stereo
+            data = np.column_stack((self.wav_data, self.wav_data))
         else:
             data = self.wav_data
 
@@ -85,27 +119,49 @@ class Freezer(Algorithm):
         start_sample = int(location * len(data))
         start_sample = max(0, min(start_sample, len(data) - 1))
 
-        # Find zero crossings
-        crossings = self._find_zero_crossings(data, start_sample)
+        # Find synchronized zero crossings
+        left_crossings, right_crossings = self._find_synchronized_crossings(data, start_sample)
 
-        if len(crossings) < 2:
-            # If not enough crossings found, take a fixed size chunk
+        # Handle cases where not enough crossings found
+        if left_crossings is None or len(left_crossings) < 2:
+            # Fallback to fixed size chunk
             end_sample = min(start_sample + 1024, len(data))
-            return data[start_sample:end_sample].copy()
-
-        # Extract data between first and last zero crossing
-        start_idx = crossings[0]
-        end_idx = crossings[-1]
-
-        wave_table = data[start_idx:end_idx].copy()
-
+            left_wave = data[start_sample:end_sample, 0].copy()
+            right_wave = data[start_sample:end_sample, 1].copy() if data.shape[1] > 1 else left_wave.copy()
+        else:
+            # Extract wavetables for each channel
+            left_start = left_crossings[0]
+            left_end = left_crossings[-1]
+            left_wave = data[left_start:left_end, 0].copy()
+            
+            if right_crossings is not None and len(right_crossings) >= 2:
+                right_start = right_crossings[0]
+                right_end = right_crossings[-1]
+                right_wave = data[right_start:right_end, 1].copy()
+            else:
+                # If no right crossings, use left crossings for right channel too
+                right_wave = data[left_start:left_end, 1].copy() if data.shape[1] > 1 else left_wave.copy()
+        
+        # Find optimal size and resample both channels to match
+        left_size = len(left_wave)
+        right_size = len(right_wave)
+        optimal_size = self._find_optimal_wavetable_size(left_size, right_size)
+        
+        # Resample both channels to optimal size
+        left_resampled = self._hermite_resample(left_wave, optimal_size)
+        right_resampled = self._hermite_resample(right_wave, optimal_size)
+        
+        # Combine into stereo wavetable
+        stereo_wavetable = np.column_stack((left_resampled, right_resampled))
+        
         if self.normalize:
-            # Normalize wavetable to prevent amplitude variations
-            max_val = np.max(np.abs(wave_table)) * 0.9
-            if max_val > 0:
-                wave_table = wave_table / max_val
+            # Normalize each channel independently to prevent amplitude variations
+            for ch in range(2):
+                max_val = np.max(np.abs(stereo_wavetable[:, ch])) * 0.9
+                if max_val > 0:
+                    stereo_wavetable[:, ch] = stereo_wavetable[:, ch] / max_val
 
-        return wave_table
+        return stereo_wavetable
 
     def _get_or_extract_wavetable(self, location):
         """Get wavetable from cache or extract if not present."""
@@ -127,23 +183,88 @@ class Freezer(Algorithm):
         c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3
         c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2)
         return ((c3 * frac + c2) * frac + c1) * frac + c0
+    
+    def _hermite_resample(self, data, target_length):
+        """Resample data to target length using Hermite interpolation."""
+        source_length = len(data)
+        if source_length == target_length:
+            return data.copy()
+        
+        resampled = np.zeros(target_length)
+        scale = (source_length - 1) / (target_length - 1)
+        
+        for i in range(target_length):
+            # Calculate source position
+            pos = i * scale
+            idx = int(pos)
+            frac = pos - idx
+            
+            # Get neighboring samples for Hermite interpolation
+            y0 = data[idx - 1] if idx > 0 else data[0]
+            y1 = data[idx]
+            y2 = data[idx + 1] if idx < source_length - 1 else data[-1]
+            y3 = data[idx + 2] if idx < source_length - 2 else data[-1]
+            
+            resampled[i] = self._hermite_interpolate(y0, y1, y2, y3, frac)
+        
+        return resampled
+    
+    def _find_optimal_wavetable_size(self, left_size, right_size):
+        """Find the optimal wavetable size that minimizes resampling error."""
+        if right_size is None:  # Mono
+            return left_size
+        
+        # Calculate resampling error for different target sizes
+        min_size = min(left_size, right_size)
+        max_size = max(left_size, right_size)
+        
+        # Test a range of sizes and find the one with minimum total resampling
+        best_size = left_size
+        min_error = float('inf')
+        
+        for size in range(min_size, max_size + 1):
+            # Estimate resampling error as the sum of size differences
+            error = abs(size - left_size) + abs(size - right_size)
+            if error < min_error:
+                min_error = error
+                best_size = size
+        
+        return best_size
 
     def _get_wavetable_sample(self, wavetable, phase):
-        """Get interpolated sample from wavetable using Hermite interpolation."""
+        """Get interpolated stereo sample from wavetable using Hermite interpolation."""
         wavetable_size = len(wavetable)
         idx = int(phase)
         frac = phase - idx
+        
+        # Handle stereo wavetables
+        num_channels = wavetable.shape[1] if wavetable.ndim > 1 else 1
+        result = np.zeros(num_channels)
 
         if idx < wavetable_size - 1:
-            # Get four points for Hermite interpolation
-            y0 = wavetable[idx - 1] if idx > 0 else wavetable[-1]
-            y1 = wavetable[idx]
-            y2 = wavetable[idx + 1]
-            y3 = wavetable[idx + 2] if idx < wavetable_size - 2 else wavetable[0]
-
-            return self._hermite_interpolate(y0, y1, y2, y3, frac)
+            # Process each channel
+            for ch in range(num_channels):
+                if wavetable.ndim > 1:
+                    # Get four points for Hermite interpolation
+                    y0 = wavetable[idx - 1, ch] if idx > 0 else wavetable[-1, ch]
+                    y1 = wavetable[idx, ch]
+                    y2 = wavetable[idx + 1, ch]
+                    y3 = wavetable[idx + 2, ch] if idx < wavetable_size - 2 else wavetable[0, ch]
+                else:
+                    # Mono wavetable
+                    y0 = wavetable[idx - 1] if idx > 0 else wavetable[-1]
+                    y1 = wavetable[idx]
+                    y2 = wavetable[idx + 1]
+                    y3 = wavetable[idx + 2] if idx < wavetable_size - 2 else wavetable[0]
+                
+                result[ch] = self._hermite_interpolate(y0, y1, y2, y3, frac)
         else:
-            return wavetable[idx]
+            if wavetable.ndim > 1:
+                result = wavetable[idx]
+            else:
+                result[0] = wavetable[idx]
+        
+        return result
 
     def process(self, block):
         n_samples = block.shape[0]
@@ -171,7 +292,7 @@ class Freezer(Algorithm):
                 # Initialize next phase to match current phase position
                 self.next_phase = 0.0
 
-            # Calculate current sample
+            # Calculate current sample (now returns stereo)
             current_sample = self._get_wavetable_sample(
                 self.current_wavetable, self.current_phase
             )
@@ -186,7 +307,7 @@ class Freezer(Algorithm):
                     self.next_wavetable, self.next_phase
                 )
 
-                # Crossfade between wavetables
+                # Crossfade between wavetables (now handles stereo)
                 sample = (
                     current_sample * (1 - interp_factor) + next_sample * interp_factor
                 )
@@ -203,9 +324,15 @@ class Freezer(Algorithm):
             else:
                 sample = current_sample
 
-            # Apply to all channels
-            for ch in range(self.channels):
-                output[i, ch] = sample
+            # Apply stereo sample to output
+            if len(sample) == 2:
+                output[i, 0] = sample[0]
+                if self.channels > 1:
+                    output[i, 1] = sample[1]
+            else:
+                # Mono sample - duplicate to all channels
+                for ch in range(self.channels):
+                    output[i, ch] = sample[0]
 
             # Update phases with wraparound
             self.current_phase += self.phase_increment
