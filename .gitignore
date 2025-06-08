@@ -169,3 +169,4 @@ cython_debug/
 test_files/
 *.wav
 !test_samples/*.wav
+.claude/
